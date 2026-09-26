@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Морской бой</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #0c2461 0%, #1e3799 50%, #0c2461 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: white;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        #status {
+            font-size: 1.3em;
+            margin: 15px 0;
+            padding: 10px 25px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 10px;
+            min-height: 40px;
+        }
+        
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            align-items: center;
+            margin-top: 20px;
+        }
+        
+        .board-wrapper {
+            text-align: center;
+        }
+        
+        .board-title {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+            color: #f1c40f;
+        }
+        
+        .board {
+            display: grid;
+            grid-template-columns: repeat(11, 35px);
+            grid-template-rows: repeat(11, 35px);
+            gap: 2px;
+            background: rgba(0,0,0,0.3);
+            padding: 5px;
+            border-radius: 8px;
+        }
+        
+        .cell {
+            background: #3498db;
+            border: 1px solid #2980b9;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        
+        .cell:hover:not(.hit):not(.miss):not(.header):not(.ship) {
+            background: #5dade2;
+            transform: scale(1.05);
+        }
+        
+        .header {
+            background: transparent;
+            cursor: default;
+            color: #f1c40f;
+            font-weight: bold;
+        }
+        
+        .ship {
+            background: #2c3e50;
+            border: 1px solid #1a252f;
+            cursor: default;
+        }
+        
+        .hit {
+            background: #e74c3c;
+            cursor: default;
+            animation: hitAnim 0.5s;
+        }
+        
+        .hit::after {
+            content: '✕';
+            color: white;
+            font-size: 1.5em;
+        }
+        
+        .miss {
+            background: #bdc3c7;
+            cursor: default;
+        }
+        
+        .miss::after {
+            content: '•';
+            color: #7f8c8d;
+            font-size: 2em;
+        }
+        
+        .sunk {
+            background: #c0392b;
+        }
+        
+        @keyframes hitAnim {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); background: #ff6b6b; }
+            100% { transform: scale(1); }
+        }
+        
+        .controls {
+            margin-top: 25px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            padding: 12px 25px;
+            font-size: 1em;
+            background: #f39c12;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        button:hover {
+            background: #e67e22;
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .stats {
+            margin-top: 20px;
+            display: flex;
+            gap: 30px;
+            font-size: 1.1em;
+        }
+        
+        .stat-item {
+            background: rgba(0,0,0,0.4);
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚢 Морской бой 🚢</h1>
+    <div id="status">Расставьте корабли или начните игру с авторасстановкой</div>
+    
+    <div class="game-container">
+        <div class="board-wrapper">
+            <div class="board-title">Поле противника</div>
+            <div class="board" id="enemy-board"></div>
+        </div>
+        <div class="board-wrapper">
+            <div class="board-title">Ваше поле</div>
+            <div class="board" id="player-board"></div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button id="auto-place">🎲 Авторасстановка</button>
+        <button id="reset">🔄 Новая игра</button>
+        <button id="start" disabled>▶ Начать бой</button>
+    </div>
+    
+    <div class="stats">
+        <div class="stat-item">Ваши попадания: <span id="player-hits">0</span></div>
+        <div class="stat-item">Попадания бота: <span id="enemy-hits">0</span></div>
+    </div>
+
+    <script>
+        const BOARD_SIZE = 10;
+        const SHIPS = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1];
+        
+        let playerBoard = [];
+        let enemyBoard = [];
+        let playerShips = [];
+        let enemyShips = [];
+        let gameStarted = false;
+        let playerTurn = true;
+        let playerHits = 0;
+        let enemyHits = 0;
+        
+        let botMemory = {
+            hits: [],
+            targets: [],
+            mode: 'hunt'
+        };
+        
+        function createEmptyBoard() {
+            return Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+        }
+        
+        function canPlaceShip(board, x, y, size, horizontal) {
+            for (let i = 0; i < size; i++) {
+                const cx = horizontal ? x + i : x;
+                const cy = horizontal ? y : y + i;
+                
+                if (cx >= BOARD_SIZE || cy >= BOARD_SIZE) return false;
+                if (board[cy][cx] !== 0) return false;
+                
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = cx + dx;
+                        const ny = cy + dy;
+                        if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
+                            if (board[ny][nx] !== 0 && !(nx >= x && nx < x + size && horizontal && ny === y) 
+                                && !(ny >= y && ny < y + size && !horizontal && nx === x)) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+        
+        function placeShipRandom(board, size) {
+            let attempts = 0;
+            while (attempts < 1000) {
+                const horizontal = Math.random() < 0.5;
+                const x = Math.floor(Math.random() * BOARD_SIZE);
+                const y = Math.floor(Math.random() * BOARD_SIZE);
+                
+                if (canPlaceShip(board, x, y, size, horizontal)) {
+                    const ship = { cells: [], hits: 0, size: size };
+                    for (let i = 0; i < size; i++) {
+                        const cx = horizontal ? x + i : x;
+                        const cy = horizontal ? y : y + i;
+                        board[cy][cx] = 1;
+                        ship.cells.push({ x: cx, y: cy });
+                    }
+                    return ship;
+                }
+                attempts++;
+            }
+            return null;
+        }
+        
+        function placeAllShips(board) {
+            const ships = [];
+            for (const size of SHIPS) {
+                const ship = placeShipRandom(board, size);
+                if (ship) ships.push(ship);
+            }
+            return ships;
+        }
+        
+        function renderBoard(boardElement, board, ships, isEnemy, showShips) {
+            boardElement.innerHTML = '';
+            
+            const corner = document.createElement('div');
+            corner.className = 'cell header';
+            boardElement.appendChild(corner);
+            
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                const header = document.createElement('div');
+                header.className = 'cell header';
+                header.textContent = String.fromCharCode(65 + i);
+                boardElement.appendChild(header);
+            }
+            
+            for (let y = 0; y < BOARD_SIZE; y++) {
+                const rowHeader = document.createElement('div');
+                rowHeader.className = 'cell header';
+                rowHeader.textContent = y + 1;
+                boardElement.appendChild(rowHeader);
+                
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    
+                    if (board[y][x] === 1 && showShips) {
+                        cell.classList.add('ship');
+                    } else if (board[y][x] === 2) {
+                        cell.classList.add('miss');
+                    } else if (board[y][x] === 3) {
+                        cell.classList.add('hit');
+                        const ship = ships.find(s => s.cells.some(c => c.x === x && c.y === y));
+                        if (ship && ship.hits === ship.size) {
+                            cell.classList.add('sunk');
+                        }
+                    }
+                    
+                    if (isEnemy && gameStarted && playerTurn && board[y][x] < 2) {
+                        cell.addEventListener('click', () => playerShoot(x, y));
+                    }
+                    
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+        
+        function initGame() {
+            playerBoard = createEmptyBoard();
+            enemyBoard = createEmptyBoard();
+            playerShips = placeAllShips(playerBoard);
+            enemyShips = placeAllShips(enemyBoard);
+            gameStarted = false;
+            playerTurn = true;
+            playerHits = 0;
+            enemyHits = 0;
+            botMemory = { hits: [], targets: [], mode: 'hunt' };
+            
+            document.getElementById('player-hits').textContent = '0';
+            document.getElementById('enemy-hits').textContent = '0';
+            document.getElementById('start').disabled = false;
+            
+            renderBoard(document.getElementById('player-board'), playerBoard, playerShips, false, true);
+            renderBoard(document.getElementById('enemy-board'), enemyBoard, enemyShips, true, false);
+            
+            setStatus('Корабли расставлены! Нажмите "Начать бой"');
+        }
+        
+        function setStatus(text) {
+            document.getElementById('status').textContent = text;
+        }
+        
+        function playerShoot(x, y) {
+            if (!gameStarted || !playerTurn) return;
+            if (enemyBoard[y][x] >= 2) return;
+            
+            if (enemyBoard[y][x] === 1) {
+                enemyBoard[y][x] = 3;
+                playerHits++;
+                document.getElementById('player-hits').textContent = playerHits;
+                
+                const ship = enemyShips.find(s => s.cells.some(c => c.x === x && c.y === y));
+                ship.hits++;
+                
+                if (ship.hits === ship.size) {
+                    setStatus(`Вы потопили корабль размера ${ship.size}! 🎯 Стреляйте ещё!`);
+                } else {
+                    setStatus('Попадание! Стреляйте ещё! 💥');
+                }
+                
+                renderBoard(document.getElementById('enemy-board'), enemyBoard, enemyShips, true, false);
+                
+                if (checkWin(enemyShips)) {
+                    setStatus('🏆 ПОБЕДА! Вы уничтожили весь флот противника!');
+                    gameStarted = false;
+                    return;
+                }
+                
+                // Игрок стреляет снова после попадания
+            } else {
+                enemyBoard[y][x] = 2;
+                setStatus('Промах! Ход противника... 🌊');
+                
+                playerTurn = false;
+                renderBoard(document.getElementById('enemy-board'), enemyBoard, enemyShips, true, false);
+                
+                setTimeout(botTurn, 1000);
+            }
+        }
+        
+        function botTurn() {
+            if (!gameStarted) return;
+            
+            let x, y;
+            
+            if (botMemory.targets.length > 0) {
+                const target = botMemory.targets.shift();
+                x = target.x;
+                y = target.y;
+            } else {
+                do {
+                    x = Math.floor(Math.random() * BOARD_SIZE);
+                    y = Math.floor(Math.random() * BOARD_SIZE);
+                } while (playerBoard[y][x] >= 2 || (x + y) % 2 !== 0);
+            }
+            
+            if (playerBoard[y][x] === 1) {
+                playerBoard[y][x] = 3;
+                enemyHits++;
+                document.getElementById('enemy-hits').textContent = enemyHits;
+                
+                const ship = playerShips.find(s => s.cells.some(c => c.x === x && c.y === y));
+                ship.hits++;
+                
+                botMemory.hits.push({ x, y });
+                
+                if (ship.hits === ship.size) {
+                    botMemory.targets = botMemory.targets.filter(t => {
+                        return !ship.cells.some(c => 
+                            Math.abs(c.x - t.x) <= 1 && Math.abs(c.y - t.y) <= 1
+                        );
+                    });
+                    botMemory.hits = botMemory.hits.filter(h => 
+                        !ship.cells.some(c => c.x === h.x && c.y === h.y)
+                    );
+                    setStatus(`Противник потопил ваш корабль! 😰 Ваш ход`);
+                    
+                    renderBoard(document.getElementById('player-board'), playerBoard, playerShips, false, true);
+                    
+                    if (checkWin(playerShips)) {
+                        setStatus('💀 ПОРАЖЕНИЕ! Ваш флот уничтожен!');
+                        gameStarted = false;
+                        return;
+                    }
+                    
+                    playerTurn = true;
+                    renderBoard(document.getElementById('enemy-board'), enemyBoard, enemyShips, true, false);
+                } else {
+                    const directions = [[-1,0],[1,0],[0,-1],[0,1]];
+                    for (const [dx, dy] of directions) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
+                            if (playerBoard[ny][nx] < 2) {
+                                if (!botMemory.targets.some(t => t.x === nx && t.y === ny)) {
+                                    botMemory.targets.push({ x: nx, y: ny });
+                                }
+                            }
+                        }
+                    }
+                    setStatus('Противник попал! Он стреляет снова... 😱');
+                    
+                    renderBoard(document.getElementById('player-board'), playerBoard, playerShips, false, true);
+                    
+                    if (checkWin(playerShips)) {
+                        setStatus('💀 ПОРАЖЕНИЕ! Ваш флот уничтожен!');
+                        gameStarted = false;
+                        return;
+                    }
+                    
+                    setTimeout(botTurn, 1000);
+                }
+            } else {
+                playerBoard[y][x] = 2;
+                setStatus('Противник промахнулся! Ваш ход 🎯');
+                
+                playerTurn = true;
+                renderBoard(document.getElementById('player-board'), playerBoard, playerShips, false, true);
+                renderBoard(document.getElementById('enemy-board'), enemyBoard, enemyShips, true, false);
+            }
+        }
+        
+        function checkWin(ships) {
+            return ships.every(ship => ship.hits === ship.size);
+        }
+        
+        document.getElementById('auto-place').addEventListener('click', () => {
+            initGame();
+        });
+        
+        document.getElementById('reset').addEventListener('click', () => {
+            initGame();
+        });
+        
+        document.getElementById('start').addEventListener('click', () => {
+            if (playerShips.length === 10 && enemyShips.length === 10) {
+                gameStarted = true;
+                playerTurn = true;
+                document.getElementById('start').disabled = true;
+                setStatus('Бой начался! Ваш ход - стреляйте по полю противника');
+                renderBoard(document.getElementById('enemy-board'), enemyBoard, enemyShips, true, false);
+                renderBoard(document.getElementById('player-board'), playerBoard, playerShips, false, true);
+            }
+        });
+        
+        initGame();
+    </script>
+</body>
+</html>
