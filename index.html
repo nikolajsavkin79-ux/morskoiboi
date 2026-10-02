@@ -3,6 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <title>Морской бой</title>
+    
+    <!-- Yandex.Metrika counter -->
+    <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=113284619', 'ym');
+
+        ym(113284619, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+    </script>
+    <noscript><div><img src="https://mc.yandex.ru/watch/113284619" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+    <!-- /Yandex.Metrika counter -->
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -196,6 +211,14 @@
     </div>
 
     <script>
+        // === ФУНКЦИЯ ОТПРАВКИ СОБЫТИЙ В ЯНДЕКС.МЕТРИКУ ===
+        function sendBattleshipEvent(eventName, params) {
+            if (typeof ym !== 'undefined') {
+                ym(113284619, 'reachGoal', eventName, params);
+                console.log('Метрика Морской бой: отправлено событие', eventName, params);
+            }
+        }
+
         const BOARD_SIZE = 10;
         const SHIPS = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1];
         
@@ -366,12 +389,16 @@
                 renderBoard(document.getElementById('enemy-board'), enemyBoard, enemyShips, true, false);
                 
                 if (checkWin(enemyShips)) {
+                    // ОТПРАВЛЯЕМ СОБЫТИЕ: Победа
+                    sendBattleshipEvent('battleship_win', {
+                        player_hits: playerHits,
+                        enemy_hits: enemyHits
+                    });
                     setStatus('🏆 ПОБЕДА! Вы уничтожили весь флот противника!');
                     gameStarted = false;
                     return;
                 }
                 
-                // Игрок стреляет снова после попадания
             } else {
                 enemyBoard[y][x] = 2;
                 setStatus('Промах! Ход противника... 🌊');
@@ -423,6 +450,11 @@
                     renderBoard(document.getElementById('player-board'), playerBoard, playerShips, false, true);
                     
                     if (checkWin(playerShips)) {
+                        // ОТПРАВЛЯЕМ СОБЫТИЕ: Поражение
+                        sendBattleshipEvent('battleship_loss', {
+                            player_hits: playerHits,
+                            enemy_hits: enemyHits
+                        });
                         setStatus('💀 ПОРАЖЕНИЕ! Ваш флот уничтожен!');
                         gameStarted = false;
                         return;
@@ -448,6 +480,11 @@
                     renderBoard(document.getElementById('player-board'), playerBoard, playerShips, false, true);
                     
                     if (checkWin(playerShips)) {
+                        // ОТПРАВЛЯЕМ СОБЫТИЕ: Поражение
+                        sendBattleshipEvent('battleship_loss', {
+                            player_hits: playerHits,
+                            enemy_hits: enemyHits
+                        });
                         setStatus('💀 ПОРАЖЕНИЕ! Ваш флот уничтожен!');
                         gameStarted = false;
                         return;
